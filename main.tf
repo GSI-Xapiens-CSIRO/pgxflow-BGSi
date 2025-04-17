@@ -170,3 +170,33 @@ module "lambda-getResultsURL" {
     local.python_modules_layer,
   ]
 }
+
+#
+# updateReferenceFiles Lambda Function
+#
+module "lambda-updateReferenceFiles" {
+  source = "terraform-aws-modules/lambda/aws"
+
+  function_name          = "pgxflow-backend-updateReferenceFiles"
+  description            = "Retrieves the latest reference files and updates the reference bucket in S3"
+  runtime                = "python3.12"
+  handler                = "lambda_function.lambda_handler"
+  memory_size            = 2048
+  timeout                = 900
+  ephemeral_storage_size = 2048
+  attach_policy_jsons    = true
+  policy_jsons = [
+    #data.aws_iam_policy_document.lambda-updateReferenceFiles.json
+  ]
+  number_of_policy_jsons = 0
+  source_path            = "${path.module}/lambda/updateReferenceFiles"
+
+  tags = var.common-tags
+
+  environment_variables = {
+    REFERENCE_LOCATION = aws_s3_bucket.pgxflow-references.bucket
+    # REFERENCE_FASTA_BASE            = var.preprocessor-fasta-file-base
+    DYNAMO_PGXFLOW_REFERENCES_TABLE = aws_dynamodb_table.pgxflow_references.name
+  }
+}
+
