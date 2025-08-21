@@ -41,6 +41,8 @@ def create_annotation_objects(current_organisation, current_drug, pmids):
         "alleles": [],
         "implications": [],
         "recommendation": "",
+        "classification": "",
+        "population": "",
         "dosingInformation": None,
         "alternateDrugAvailable": None,
         "otherPrescribingGuidance": None,
@@ -69,7 +71,6 @@ def yield_drugs(pharmcat_output_json):
             if prefix == f"drugs.{current_org}" and event == "map_key":
                 current_drug = value
                 # Reset annotations for each new drug
-                annotation_chunk = []
             if current_drug not in DRUGS:
                 continue
 
@@ -126,6 +127,17 @@ def yield_drugs(pharmcat_output_json):
                 ):
                     base_annotation["recommendation"] = strip_html(value)
 
+                # Add classification
+                if (
+                    prefix == f"{annotation_prefix}.classification"
+                    and event == "string"
+                ):
+                    base_annotation["classification"] = value
+
+                # Add population
+                if prefix == f"{annotation_prefix}.population" and event == "string":
+                    base_annotation["population"] = value
+
                 annotation_diplotype_array_prefix = (
                     f"{annotation_prefix}.genotypes.item.diplotypes"
                 )
@@ -142,7 +154,7 @@ def yield_drugs(pharmcat_output_json):
                     annotation_diplotype_prefix = (
                         f"{annotation_diplotype_array_prefix}.item"
                     )
-                    
+
                     if is_entering_map(prefix, event, annotation_diplotype_prefix):
                         annotation = deepcopy(base_annotation)
 
@@ -158,8 +170,11 @@ def yield_drugs(pharmcat_output_json):
                             and event == "string"
                         ):
                             annotation["alleles"].append(value)
-                            
-                    if is_exiting_map(prefix, event, annotation_diplotype_prefix) and annotation.get("gene") in GENES:
+
+                    if (
+                        is_exiting_map(prefix, event, annotation_diplotype_prefix)
+                        and annotation.get("gene") in GENES
+                    ):
                         annotations.append(annotation)
 
                     if (
@@ -177,9 +192,6 @@ def yield_drugs(pharmcat_output_json):
                     if prefix == f"{annotation_prefix}.{key}":
                         for annotation in annotations:
                             annotation[key] = value
-
-                if is_exiting_map(prefix, event, annotation_prefix):
-                    annotation_chunk.extend(annotations)
 
                 if is_exiting_array(prefix, event, annotation_array_prefix):
                     yield annotations

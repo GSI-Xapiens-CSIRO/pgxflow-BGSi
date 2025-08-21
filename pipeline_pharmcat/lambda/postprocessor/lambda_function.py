@@ -63,19 +63,9 @@ def write_annotations(
     drugs_to_genes,
 ):
     with open(tmp_diplotypes_jsonl, "rb") as d1_f, open(diplotypes_jsonl, "w") as d2_f:
-        visited_annotations = set()
         for annotation_chunk in yield_drugs(local_input_path):
             for i in range(len(annotation_chunk)):
                 annotation = annotation_chunk[i]
-                annotation_id = create_b64_id(
-                    annotation["org"],
-                    annotation["drug"],
-                    annotation["gene"],
-                    annotation["alleles"],
-                )
-                if annotation_id in visited_annotations:
-                    continue
-                visited_annotations.add(annotation_id)
 
                 diplotype_mapping_id = create_b64_id(
                     drugs_to_genes.get(annotation["org"]),
@@ -98,6 +88,8 @@ def write_annotations(
                     "pmids",
                     "implications",
                     "recommendation",
+                    "classification",
+                    "population",
                     "dosingInformation",
                     "alternateDrugAvailable",
                     "otherPrescribingGuidance",
