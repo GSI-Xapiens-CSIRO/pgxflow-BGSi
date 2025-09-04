@@ -11,7 +11,7 @@ COPY logback.xml /opt/logback.xml
 
 WORKDIR ${LAMBDA_TASK_ROOT}/
 
-RUN wget https://github.com/PharmGKB/PharmCAT/releases/download/v2.15.5/pharmcat-2.15.5-all.jar -O pharmcat.jar
+RUN wget https://github.com/PharmGKB/PharmCAT/releases/download/v3.0.1/pharmcat-3.0.1-all.jar -O pharmcat.jar
 
 COPY lambda_function.py ${LAMBDA_TASK_ROOT}/
 

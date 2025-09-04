@@ -40,10 +40,10 @@ ENV LD_LIBRARY_PATH="/opt/lib:$LD_LIBRARY_PATH"
 
 WORKDIR /opt
 
-RUN wget https://github.com/PharmGKB/PharmCAT/releases/download/v2.15.5/pharmcat-preprocessor-2.15.5.tar.gz
+RUN wget https://github.com/PharmGKB/PharmCAT/releases/download/v3.0.1/pharmcat-preprocessor-3.0.1.tar.gz
 
-RUN tar -xvf pharmcat-preprocessor-2.15.5.tar.gz && \
-    rm pharmcat-preprocessor-2.15.5.tar.gz
+RUN tar -xvf pharmcat-preprocessor-3.0.1.tar.gz && \
+    rm pharmcat-preprocessor-3.0.1.tar.gz
     
 WORKDIR /opt/preprocessor    
 

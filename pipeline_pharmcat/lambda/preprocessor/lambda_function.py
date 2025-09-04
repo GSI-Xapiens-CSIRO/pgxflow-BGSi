@@ -27,8 +27,7 @@ PHARMCAT_REFERENCES = [
 def run_preprocessor(input_path, vcf, reference_fna, reference_vcf, missing_to_ref):
     """Run the PharmCAT VCF preprocessor."""
     cmd = [
-        "python3",
-        "/opt/preprocessor/pharmcat_vcf_preprocessor.py",
+        "/opt/preprocessor/pharmcat_vcf_preprocessor",
         "--vcf",
         input_path,
         "--output-dir",
