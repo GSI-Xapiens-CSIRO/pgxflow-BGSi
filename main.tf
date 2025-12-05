@@ -94,7 +94,7 @@ module "lambda-initFlow" {
     PHARMCAT_ORGANISATIONS              = jsonencode(var.pharmcat_configuration.ORGANISATIONS)
     PHARMCAT_GENES                      = join(",", var.pharmcat_configuration.GENES)
     PHARMCAT_DRUGS                      = join(",", var.pharmcat_configuration.DRUGS)
-    LOOKUP_REFERENCE                    = var.lookup_configuration["assoc_matrix_filename"]
+    LOOKUP_REFERENCE                    = "prod/${var.lookup_configuration["assoc_matrix_filename"]}"
     LOOKUP_CHR_HEADER                   = var.lookup_configuration["chr_header"]
     LOOKUP_START_HEADER                 = var.lookup_configuration["start_header"]
     LOOKUP_END_HEADER                   = var.lookup_configuration["end_header"]
