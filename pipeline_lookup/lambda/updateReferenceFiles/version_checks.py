@@ -25,9 +25,9 @@ def check_lookup_version():
     lookup_reference_staging = f"staging/{LOOKUP_REFERENCE}"
     try:
         s3_client.head_object(
-            Bucket="pgxflow-references",
+            Bucket=REFERENCE_LOCATION,
             Key=lookup_reference_staging,
         )
         return True
-    except s3_client.exceptions.NoSuchKey:
+    except Exception:
         return False
