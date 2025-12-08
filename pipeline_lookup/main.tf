@@ -148,6 +148,7 @@ module "lambda-updateReferenceFiles" {
     REFERENCE_LOCATION              = var.pgxflow-reference-bucket-name
     DYNAMO_PGXFLOW_REFERENCES_TABLE = var.dynamo-references-table
     EC2_IAM_INSTANCE_PROFILE        = var.ec2-references-instance-profile
+    LOOKUP_REFERENCE                = "prod/${var.lookup_configuration["assoc_matrix_filename"]}"
   }
 
   layers = [
