@@ -10,6 +10,52 @@ PHARMCAT_VERSION_NO="__PHARMCAT_VERSION_NO__"
 PHARMGKB_ID="__PHARMGKB_ID__"
 REFERENCE_LOCATION="__REFERENCE_LOCATION__"
 
+# Install CloudWatch Agent
+yum install -y amazon-cloudwatch-agent
+
+# Create CloudWatch Agent config
+cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'EOF'
+{
+    "agent": {
+        "metrics_collection_interval": 60,
+        "run_as_user": "root"
+    },
+    "logs": {
+        "logs_collected": {
+            "files": {
+                "collect_list": [
+                    {
+                        "file_path": "/var/log/messages",
+                        "log_group_name": "/aws/ec2/pgxflow-backend-pharmcat",
+                        "log_stream_name": "{instance_id}/messages",
+                        "retention_in_days": 30
+                    },
+                    {
+                        "file_path": "/var/log/cloud-init-output.log",
+                        "log_group_name": "/aws/ec2/pgxflow-backend-pharmcat",
+                        "log_stream_name": "{instance_id}/cloud-init",
+                        "retention_in_days": 30
+                    },
+                    {
+                        "file_path": "/var/log/pharmcat/*.log",
+                        "log_group_name": "/aws/ec2/pgxflow-backend-pharmcat",
+                        "log_stream_name": "{instance_id}/pharmcat",
+                        "retention_in_days": 30
+                    }
+                ]
+            }
+        }
+    }
+}
+EOF
+
+# Start CloudWatch Agent
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+    -a fetch-config \
+    -m ec2 \
+    -s \
+    -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
 dnf install -y \
     git \
     bzip2 \
