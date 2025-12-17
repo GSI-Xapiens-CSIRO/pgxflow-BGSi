@@ -40,6 +40,30 @@ def query_references_table(id):
     return response.get("Item", {}).get("version", {}).get("S")
 
 
+def update_references_table(id, version):
+    kwargs = {
+        "TableName": DYNAMO_PGXFLOW_REFERENCES_TABLE,
+        "Key": {
+            "id": {
+                "S": id,
+            },
+        },
+        "UpdateExpression": "SET version = :version",
+        "ExpressionAttributeValues": {
+            ":version": {
+                "S": version,
+            },
+        },
+    }
+    print(f"Calling dynamodb.update_item with kwargs: {json.dumps(kwargs)}")
+    try:
+        response = dynamodb.update_item(**kwargs)
+    except ClientError as e:
+        print(f"Received unexpected ClientError: {json.dumps(e.response, default=str)}")
+        raise e
+    print(f"Received response: {json.dumps(response, default=str)}")
+
+
 def sort(output_file, input_file, chr_index, start_index):
     sort_args = [
         "sort",
@@ -72,27 +96,3 @@ def tabix_index(input_file, chr_index, start_index, end_index):
     ]
     tabix_process = CheckedProcess(tabix_args)
     tabix_process.check()
-
-
-def update_references_table(id, version):
-    kwargs = {
-        "TableName": DYNAMO_PGXFLOW_REFERENCES_TABLE,
-        "Key": {
-            "id": {
-                "S": id,
-            },
-        },
-        "UpdateExpression": "SET version = :version",
-        "ExpressionAttributeValues": {
-            ":version": {
-                "S": version,
-            },
-        },
-    }
-    print(f"Calling dynamodb.update_item with kwargs: {json.dumps(kwargs)}")
-    try:
-        response = dynamodb.update_item(**kwargs)
-    except ClientError as e:
-        print(f"Received unexpected ClientError: {json.dumps(e.response, default=str)}")
-        raise e
-    print(f"Received response: {json.dumps(response, default=str)}")
