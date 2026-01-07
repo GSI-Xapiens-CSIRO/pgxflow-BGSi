@@ -28,6 +28,7 @@ REQUESTED_FIELDS = {
 }
 
 REQUESTED_FORMAT_TAGS = {
+    "gt": "GT",
     "dp": "DP",
     "gq": "GQ",
     "mq": "MQ",
