@@ -79,6 +79,13 @@ resource "aws_api_gateway_deployment" "PgxApi" {
       aws_api_gateway_integration.qcnotes-get,
       aws_api_gateway_integration_response.qcnotes-get,
       aws_api_gateway_method_response.qcnotes-get,
+      # CORS configurations - force redeploy when CORS headers change
+      filesha1("${path.module}/api.tf"),
+      filesha1("${path.module}/api-submit.tf"),
+      filesha1("${path.module}/api-results.tf"),
+      filesha1("${path.module}/api-batchsubmit.tf"),
+      filesha1("${path.module}/api-qcfigures.tf"),
+      filesha1("${path.module}/api-qcnotes.tf"),
     ]))
   }
 }
