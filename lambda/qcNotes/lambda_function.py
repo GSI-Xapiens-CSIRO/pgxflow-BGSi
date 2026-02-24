@@ -3,7 +3,7 @@ import os
 import boto3
 import json
 from shared.apiutils import bad_request, bundle_response
-
+from shared.auth import require_permission, PermissionError
 
 s3_client = boto3.client("s3")
 BUCKET_NAME = os.environ["FILE_LOCATION"]
@@ -51,17 +51,48 @@ def lambda_handler(event, context):
     method = event["httpMethod"].upper()
 
     try:
+
         match method:
+
             case "GET":
+                # 🔐 READ permission
+                require_permission(event, "generate_report.read")
+
                 project_name = event["queryStringParameters"]["projectName"]
                 file_name = event["queryStringParameters"]["fileName"]
+
                 return get_notes(project_name, file_name)
 
             case "POST":
+                try:
+                    require_permission(event, "generate_report.update")
+                except PermissionError:
+                    require_permission(event, "generate_report.create")
+                
+
                 project_name = event["queryStringParameters"]["projectName"]
                 file_name = event["queryStringParameters"]["fileName"]
                 notes = json.loads(event["body"] or "\"\"")
+
                 return update_notes(project_name, file_name, notes)
+
+            case _:
+                return bundle_response(
+                    405,
+                    {
+                        "success": False,
+                        "error": "Method not allowed",
+                    },
+                )
+
+    except PermissionError as e:
+        return bundle_response(
+            403,
+            {
+                "success": False,
+                "error": str(e),
+            },
+        )
 
     except Exception as e:
         print(f"Error parsing request body: {str(e)}")
@@ -69,6 +100,6 @@ def lambda_handler(event, context):
             500,
             {
                 "success": False,
-                "error": f"Error fetching notes: {str(e)}",
+                "error": f"Error processing qcnotes: {str(e)}",
             },
         )
