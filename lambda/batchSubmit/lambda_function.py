@@ -9,6 +9,7 @@ from shared.apiutils import bad_request, bundle_response
 from shared.dynamodb import check_user_in_project, update_clinic_job
 from shared.utils import LoggingClient
 from dynamodb import batch_check_duplicate_job_name
+from shared.auth import require_permission, PermissionError
 
 
 HUB_NAME = os.environ["HUB_NAME"]
@@ -116,47 +117,70 @@ def batch_submit(job_entries, sub):
 
 def lambda_handler(event, _):
     print(f"Event received: {json.dumps(event)}")
-    sub = event["requestContext"]["authorizer"]["claims"]["sub"]
-
-    event_body = event.get("body")
-    if not event_body:
-        return bad_request("No body sent with request.")
-    try:
-        body_dict = json.loads(event_body)
-        project = body_dict["projectName"]
-        jobs = body_dict["jobs"]
-        missing_to_ref = body_dict.get("missingToRef", False)
-
-        check_user_in_project(sub, project)
-    except ValueError:
-        return bad_request("Error parsing request body, Expected JSON.")
-
-    if len(jobs) > MAX_JOBS_PER_SUBMISSION:
-        return bad_request("Too many jobs submitted. Maximum is 100.")
 
     try:
-        job_names = list(map(lambda x: x["jobName"], jobs))
-        duplicates = batch_check_duplicate_job_name(job_names, project)
+        require_permission(event, "clinical_workflow_execution.create")
 
-        if duplicates:
+        sub = event["requestContext"]["authorizer"]["claims"]["sub"]
+
+        event_body = event.get("body")
+        if not event_body:
+            return bad_request("No body sent with request.")
+        try:
+            body_dict = json.loads(event_body)
+            project = body_dict["projectName"]
+            jobs = body_dict["jobs"]
+            missing_to_ref = body_dict.get("missingToRef", False)
+
+            check_user_in_project(sub, project)
+        except ValueError:
+            return bad_request("Error parsing request body, Expected JSON.")
+
+        if len(jobs) > MAX_JOBS_PER_SUBMISSION:
+            return bad_request("Too many jobs submitted. Maximum is 100.")
+
+        try:
+            job_names = list(map(lambda x: x["jobName"], jobs))
+            duplicates = batch_check_duplicate_job_name(job_names, project)
+
+            if duplicates:
+                return bad_request(
+                    f"The following job names already exist: {', '.join(duplicates)}"
+                )
+
+        except ClientError:
             return bad_request(
-                f"The following job names already exist: {", ".join(duplicates)}"
+                "Unable to check existing jobs for naming conflicts. Please contact an AWS administrator."
             )
 
-    except ClientError as e:
-        return bad_request(
-            "Unable to check existing jobs for naming conflicts. Please contact an AWS administrator."
+        job_entries = create_job_entries(jobs, project, sub, missing_to_ref)
+
+        successful_jobs, failed_jobs = batch_submit(job_entries, sub)
+
+        return bundle_response(
+            200,
+            {
+                "Response": f"{len(successful_jobs)}/{len(successful_jobs) + len(failed_jobs)} queued for processing.",
+                "ProjectName": project,
+                "Success": True,
+            },
         )
 
-    job_entries = create_job_entries(jobs, project, sub, missing_to_ref)
+    except PermissionError as e:
+        return bundle_response(
+            403,
+            {
+                "Success": False,
+                "Message": str(e),
+            },
+        )
 
-    successful_jobs, failed_jobs = batch_submit(job_entries, sub)
-
-    return bundle_response(
-        200,
-        {
-            "Response": f"{len(successful_jobs)}/{len(successful_jobs) + len(failed_jobs)} queued for processing.",
-            "ProjectName": project,
-            "Success": True,
-        },
-    )
+    except Exception:
+        traceback.print_exc()
+        return bundle_response(
+            500,
+            {
+                "Success": False,
+                "Message": "Internal server error",
+            },
+        )

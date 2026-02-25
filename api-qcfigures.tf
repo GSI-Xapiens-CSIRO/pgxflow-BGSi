@@ -13,6 +13,11 @@ resource "aws_api_gateway_method" "vcfstats-post" {
   http_method   = "POST"
   authorization = "COGNITO_USER_POOLS"
   authorizer_id = aws_api_gateway_authorizer.pgxflow_user_pool_authorizer.id
+
+  request_parameters = {
+    "method.request.header.Authorization"       = true
+    "method.request.header.X-Permissions-Token" = true
+  }
 }
 resource "aws_api_gateway_method_response" "vcfstats-post" {
   rest_api_id = aws_api_gateway_method.vcfstats-post.rest_api_id
@@ -115,6 +120,11 @@ resource "aws_api_gateway_method" "vcfstats-patch" {
   http_method   = "PATCH"
   authorization = "COGNITO_USER_POOLS"
   authorizer_id = aws_api_gateway_authorizer.pgxflow_user_pool_authorizer.id
+
+  request_parameters = {
+    "method.request.header.Authorization"       = true
+    "method.request.header.X-Permissions-Token" = true
+  }
 }
 
 resource "aws_api_gateway_method_response" "vcfstats-patch" {

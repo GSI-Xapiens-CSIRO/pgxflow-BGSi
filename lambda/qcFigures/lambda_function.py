@@ -5,6 +5,7 @@ import json
 from uuid import uuid4
 from shared.apiutils import bad_request, bundle_response
 from shared.utils import generate_presigned_get_url
+from shared.auth import require_permission, PermissionError
 
 
 s3_client = boto3.client("s3")
@@ -93,16 +94,21 @@ def classify_error(stderr_msg):
 
 
 def lambda_handler(event, context):
-    event_body = event.get("body")
-
-    if not event_body:
-        return bad_request("No body sent with request.")
 
     try:
+        # 🔐 Permission check
+        require_permission(event, "generate_report.read")
+
+        event_body = event.get("body")
+
+        if not event_body:
+            return bad_request("No body sent with request.")
+
         body_dict = json.loads(event_body)
         project_name = body_dict["projectName"]
         file_name = body_dict["fileName"]
         key = body_dict["key"]
+
         input_vcf_file = f"projects/{project_name}/project-files/{file_name}"
         local_vcf_path = os.path.join(input_dir, os.path.basename(file_name))
 
@@ -113,6 +119,7 @@ def lambda_handler(event, context):
 
         contents = response and "Contents" in response
         image_files = contents and [obj["Key"] for obj in response["Contents"]]
+
         formula_details = mapping_formula.get(key, {})
         if not formula_details:
             return bundle_response(
@@ -122,25 +129,33 @@ def lambda_handler(event, context):
                     "images": {},
                 },
             )
+
         identifier = formula_details["identifier"]
+
+        # ===============================
+        # IF IMAGE EXISTS
+        # ===============================
         if image_files and any(identifier in image_file for image_file in image_files):
-            print("get existing Images")
-            print(response)
 
             images = {}
+
             for image_file in image_files:
                 image_file_name = image_file.split("/")[-1]
+
                 if identifier in image_file_name:
-                    output_vcfstats_file = f"projects/{project_name}/qc-figures/{file_name}/{image_file_name}"
+                    output_vcfstats_file = (
+                        f"projects/{project_name}/qc-figures/{file_name}/{image_file_name}"
+                    )
 
                     result_url = generate_presigned_get_url(
                         BUCKET_NAME,
                         output_vcfstats_file,
                         RESULT_DURATION,
                     )
-                    key, title = get_result_type(image_file_name)
 
-                    images[key] = {
+                    key_name, title = get_result_type(image_file_name)
+
+                    images[key_name] = {
                         "title": title,
                         "url": result_url,
                     }
@@ -148,117 +163,122 @@ def lambda_handler(event, context):
             return bundle_response(
                 200,
                 {
-                    "message": "Image generated and uploaded successfully",
+                    "message": "Image fetched successfully",
                     "images": images,
                 },
             )
-        else:
-            s3_resource.Bucket(BUCKET_NAME).download_file(
-                input_vcf_file, local_vcf_path
-            )
-            for vcf_file in os.listdir(input_dir):
-                if vcf_file.endswith(".vcf.gz"):
-                    vcf_path = os.path.join(input_dir, vcf_file)
-                    output_prefix = os.path.splitext(vcf_file)[0]
-                    print(f"Processing: {vcf_file}")
-                    if vcf_file.endswith(".vcf.gz"):
-                        vcf_path = os.path.join(input_dir, vcf_file)
-                        output_prefix = os.path.splitext(vcf_file)[0]
 
-                        print(f"Processing: {vcf_file}")
+        # ===============================
+        # GENERATE IMAGE
+        # ===============================
 
-                        output_image = os.path.join(output_dir, f"{output_prefix}.png")
-                        formula, image_title = get_formula_and_title(key, vcf_file)
-                        if not formula:
-                            return bundle_response(
-                                400,
-                                {
-                                    "message": "Formula not found. Please check key parameter.",
-                                    "images": {},
-                                },
-                            )
+        s3_resource.Bucket(BUCKET_NAME).download_file(
+            input_vcf_file, local_vcf_path
+        )
 
-                        vcfstats_params = [
-                            "vcfstats",
-                            "--vcf",
-                            vcf_path,
-                            "--outdir",
-                            output_dir,
-                            "--formula",
-                            formula,
-                            "--title",
-                            image_title,
-                        ] + formula_details.get("additional_args", [])
-
-                        subprocess.run(
-                            vcfstats_params,
-                            check=True,
-                            stderr=subprocess.PIPE,
-                            cwd="/tmp",
-                        )
-                        print(f"Results saved in: {output_image}")
-
-                if os.path.isfile(vcf_path):
-                    os.unlink(vcf_path)
-
-            images = {}
-            for image_file_name in os.listdir(output_dir):
-                image_path = os.path.join(output_dir, image_file_name)
-                output_vcfstats_file = (
-                    f"projects/{project_name}/qc-figures/{file_name}/{image_file_name}"
-                )
-                with open(image_path, "rb") as image_file:
-                    image_data = image_file.read()
-                s3_client.put_object(
-                    Bucket=BUCKET_NAME,
-                    Key=output_vcfstats_file,
-                    Body=image_data,
-                    ContentType="image/png",
-                )
-                if os.path.isfile(image_path):
-                    os.unlink(image_path)
-
-                result_url = generate_presigned_get_url(
-                    BUCKET_NAME,
-                    output_vcfstats_file,
-                    RESULT_DURATION,
-                )
-                key, title = get_result_type(image_file_name)
-
-                images[key] = {
-                    "title": title,
-                    "url": result_url,
-                }
-
+        formula, image_title = get_formula_and_title(key, file_name)
+        if not formula:
             return bundle_response(
-                200,
+                400,
                 {
-                    "message": "Image generated and uploaded successfully",
-                    "images": images,
+                    "message": "Formula not found. Please check key parameter.",
+                    "images": {},
                 },
             )
+
+        output_image = os.path.join(output_dir, f"{uuid4()}.png")
+
+        vcfstats_params = [
+            "vcfstats",
+            "--vcf",
+            local_vcf_path,
+            "--outdir",
+            output_dir,
+            "--formula",
+            formula,
+            "--title",
+            image_title,
+        ] + formula_details.get("additional_args", [])
+
+        subprocess.run(
+            vcfstats_params,
+            check=True,
+            stderr=subprocess.PIPE,
+            cwd="/tmp",
+        )
+
+        images = {}
+
+        for image_file_name in os.listdir(output_dir):
+
+            image_path = os.path.join(output_dir, image_file_name)
+
+            output_vcfstats_file = (
+                f"projects/{project_name}/qc-figures/{file_name}/{image_file_name}"
+            )
+
+            with open(image_path, "rb") as image_file:
+                image_data = image_file.read()
+
+            s3_client.put_object(
+                Bucket=BUCKET_NAME,
+                Key=output_vcfstats_file,
+                Body=image_data,
+                ContentType="image/png",
+            )
+
+            result_url = generate_presigned_get_url(
+                BUCKET_NAME,
+                output_vcfstats_file,
+                RESULT_DURATION,
+            )
+
+            key_name, title = get_result_type(image_file_name)
+
+            images[key_name] = {
+                "title": title,
+                "url": result_url,
+            }
+
+            os.unlink(image_path)
+
+        if os.path.isfile(local_vcf_path):
+            os.unlink(local_vcf_path)
+
+        return bundle_response(
+            200,
+            {
+                "message": "Image generated and uploaded successfully",
+                "images": images,
+            },
+        )
+
+    except PermissionError as e:
+        return bundle_response(
+            403,
+            {
+                "status": "error",
+                "message": str(e),
+            },
+        )
 
     except subprocess.CalledProcessError as e:
-        # TODO delete VCF file on /tmp/{input_vcf_file}
-        if e.stdout:
-            print(e.stdout)
-        if e.stderr:
-            print(e.stderr)
-
         error_type, message = classify_error(e.stderr)
         return bundle_response(
             500,
-            {"body": {"status": "error", "error_type": error_type, "message": message}},
+            {
+                "status": "error",
+                "error_type": error_type,
+                "message": message,
+            },
         )
+
     except Exception as e:
-        # TODO delete VCF file on /tmp
         return bundle_response(
             500,
             {
-                "body": {
-                    "status": "error",
-                    "error_type": "other_error",
-                    "message": f"Error generating image: {str(e)}",
-                },
+                "status": "error",
+                "error_type": "other_error",
+                "message": f"Error generating image: {str(e)}",
             },
         )

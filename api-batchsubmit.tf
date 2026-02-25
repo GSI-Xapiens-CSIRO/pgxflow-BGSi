@@ -13,6 +13,11 @@ resource "aws_api_gateway_method" "batch-submit-post" {
   http_method   = "POST"
   authorization = "COGNITO_USER_POOLS"
   authorizer_id = aws_api_gateway_authorizer.pgxflow_user_pool_authorizer.id
+
+  request_parameters = {
+    "method.request.header.Authorization"       = true
+    "method.request.header.X-Permissions-Token" = true
+  }
 }
 
 resource "aws_api_gateway_method_response" "batch-submit-post" {

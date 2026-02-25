@@ -1,10 +1,10 @@
 import json
 import os
 
-
 from shared.apiutils import bad_request, bundle_response
 from shared.dynamodb import check_user_in_project, query_clinic_job
 from shared.utils import LoggingClient
+from shared.auth import require_permission, PermissionError  # 🔐 UPDATED
 
 HUB_NAME = os.environ["HUB_NAME"]
 DPORTAL_BUCKET = os.environ["DPORTAL_BUCKET"]
@@ -37,6 +37,8 @@ def lambda_handler(event, _):
     print(f"Event received: {json.dumps(event)}")
 
     try:
+        require_permission(event, "clinic_workflow_result.read")
+
         sub = event["requestContext"]["authorizer"]["claims"]["sub"]
         request_id = event["queryStringParameters"]["request_id"]
         project_name = event["queryStringParameters"]["project_name"]
@@ -62,7 +64,10 @@ def lambda_handler(event, _):
             no_results_message = "The job may still be partially complete."
             no_results_message_type = "Warning"
         elif status == "failed":
-            no_results_message = f"Some results are unavailable due to {str(pipeline).capitalize()} pipeline failure."
+            no_results_message = (
+                f"Some results are unavailable due to "
+                f"{str(pipeline).capitalize()} pipeline failure."
+            )
             no_results_message_type = "Error"
         else:
             response = s3_client.get_object(
@@ -79,7 +84,7 @@ def lambda_handler(event, _):
                 "page": 1,
                 "content": content.decode("utf-8") if content else "",
                 "config": {
-                    "lookup": prepare_lookup_config(),  # Filtered config
+                    "lookup": prepare_lookup_config(),
                     "pharmcat": PHARMCAT_CONFIGURATION,
                 },
                 "missingToRef": missing_to_ref,
@@ -88,10 +93,27 @@ def lambda_handler(event, _):
             },
         )
 
-    except ValueError:
-        return bad_request("Error parsing request body, Expected JSON")
+    except PermissionError as e:
+        return bundle_response(
+            403,
+            {
+                "success": False,
+                "error": str(e),
+            },
+        )
+
     except KeyError:
         return bad_request("Invalid parameters.")
+
+    except ValueError:
+        return bad_request("Error parsing request body. Expected JSON.")
+
     except Exception as e:
-        print("Unhandled", e)
-        return bad_request("Unhandled exception. Please contact admin with the jobId.")
+        print("Unhandled exception:", e)
+        return bundle_response(
+            500,
+            {
+                "success": False,
+                "error": "Unhandled exception. Please contact admin with the jobId.",
+            },
+        )

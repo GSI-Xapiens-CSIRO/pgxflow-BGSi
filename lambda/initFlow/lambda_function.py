@@ -13,6 +13,7 @@ from shared.utils import LoggingClient, handle_failed_execution, query_reference
 from dynamodb import does_clinic_job_exist_by_name
 from pharmcat import check_pharmcat_configuration
 from lookup import check_assoc_matrix
+from shared.auth import require_permission, PermissionError
 
 HUB_NAME = os.environ["HUB_NAME"]
 PHARMCAT_PREPROCESSOR_SNS_TOPIC_ARN = os.environ["PHARMCAT_PREPROCESSOR_SNS_TOPIC_ARN"]
@@ -134,127 +135,158 @@ def lambda_handler(event, context):
 
     pipeline_names = HUB_CONFIGS.get(HUB_NAME, {}).get("pipeline_names", [])
 
-    result = parse_sns(event) if is_batch_job else parse_api_gateway(event)
-    if not result.get("success", False):
-        return handle_init_failure(result, is_batch_job, pipeline_names)
-
-    request_id = result["requestId"]
-    sub = result["sub"]
-    project = result["projectName"]
-    location = result["location"]
-    job_name = result["jobName"]
-    missing_to_ref = result["missingToRef"]
-
     try:
-        check_user_in_project(sub, project)
-    except Exception as e:
-        result["error"] = f"Error checking user in project: {str(e)}"
-        return handle_init_failure(result, is_batch_job, pipeline_names)
+        # 🔐 Only enforce permission for API Gateway calls
+        if not is_batch_job:
+            try:
+                require_permission(event, "clinical_workflow_execution.create")
+            except PermissionError:
+                require_permission(event, "clinical_workflow_execution.update")
 
-    job_name_exists = (not is_batch_job) and does_clinic_job_exist_by_name(
-        job_name.lower(), project
-    )
-    if job_name_exists:
-        result["error"] = (
-            f"Job name '{job_name}' already exists in project '{project}'."
-        )
-        return handle_init_failure(result, is_batch_job, pipeline_names)
+        result = parse_sns(event) if is_batch_job else parse_api_gateway(event)
+        if not result.get("success", False):
+            return handle_init_failure(result, is_batch_job, pipeline_names)
 
-    try:
-        sample_count = get_sample_count(location)
-    except subprocess.CalledProcessError as e:
-        result["error"] = f"Error counting samples: {str(e)}"
-        return handle_init_failure(result, is_batch_job, pipeline_names)
-    if sample_count != 1:
-        result["error"] = "Only single-sample VCFs are supported."
-        return handle_init_failure(result, is_batch_job, pipeline_names)
+        request_id = result["requestId"]
+        sub = result["sub"]
+        project = result["projectName"]
+        location = result["location"]
+        job_name = result["jobName"]
+        missing_to_ref = result["missingToRef"]
 
-    config = HUB_CONFIGS.get(HUB_NAME)
-    if not config:
-        result["error"] = f"Unknown HUB_NAME: {HUB_NAME}."
-        return handle_init_failure(result, is_batch_job, pipeline_names)
-
-    reference_versions = {}
-    failed_ids = []
-    for reference_id in config.get("reference_ids", []):
         try:
-            version = query_references_table(reference_id)
-            reference_versions[reference_id] = version
-        except ClientError as e:
-            traceback.print_exc()
-            failed_ids.append(reference_id)
-    if failed_ids:
-        result["error"] = (
-            f"Unable to retrieve reference versions for: {', '.join(failed_ids)}. "
-            "Please contact an AWS administrator."
-        )
-        return handle_init_failure(result, is_batch_job, pipeline_names)
-    missing_references = [
-        ref_id for ref_id, version in reference_versions.items() if version is None
-    ]
-    if missing_references:
-        result["error"] = (
-            f"Missing reference versions for: {', '.join(missing_references)}. "
-            "Please contact an AWS administrator."
-        )
-        return handle_init_failure(result, is_batch_job, pipeline_names)
-
-    if HUB_NAME in PHARMCAT_HUBS:
-        passed, error_message = check_pharmcat_configuration()
-        if not passed:
-            result["error"] = error_message
-            return handle_init_failure(result, is_batch_job, pipeline_names)
-    if HUB_NAME in LOOKUP_HUBS:
-        passed, error_message = check_assoc_matrix()
-        if not passed:
-            result["error"] = error_message
+            check_user_in_project(sub, project)
+        except Exception as e:
+            result["error"] = f"Error checking user in project: {str(e)}"
             return handle_init_failure(result, is_batch_job, pipeline_names)
 
-    parsed_location = urlparse(location)
-    source_vcf_key = parsed_location.path.lstrip("/")
-    input_vcf = Path(source_vcf_key).name
-
-    sns_topics = config.get("sns_topics", [])
-    if not sns_topics:
-        result["error"] = (
-            "No SNS topics configured for this hub. Please contact an AWS administrator."
+        job_name_exists = (not is_batch_job) and does_clinic_job_exist_by_name(
+            job_name.lower(), project
         )
-        return handle_init_failure(result, is_batch_job, pipeline_names)
-    try:
-        for topic_arn in HUB_CONFIGS.get(HUB_NAME, {}).get("sns_topics"):
-            message = json.dumps(
-                {
-                    "requestId": request_id,
-                    "projectName": project,
-                    "sourceVcfKey": source_vcf_key,
-                    "missingToRef": missing_to_ref,
-                }
+        if job_name_exists:
+            result["error"] = (
+                f"Job name '{job_name}' already exists in project '{project}'."
             )
+            return handle_init_failure(result, is_batch_job, pipeline_names)
+
+        try:
+            sample_count = get_sample_count(location)
+        except subprocess.CalledProcessError as e:
+            result["error"] = f"Error counting samples: {str(e)}"
+            return handle_init_failure(result, is_batch_job, pipeline_names)
+        if sample_count != 1:
+            result["error"] = "Only single-sample VCFs are supported."
+            return handle_init_failure(result, is_batch_job, pipeline_names)
+
+        config = HUB_CONFIGS.get(HUB_NAME)
+        if not config:
+            result["error"] = f"Unknown HUB_NAME: {HUB_NAME}."
+            return handle_init_failure(result, is_batch_job, pipeline_names)
+
+        reference_versions = {}
+        failed_ids = []
+        for reference_id in config.get("reference_ids", []):
+            try:
+                version = query_references_table(reference_id)
+                reference_versions[reference_id] = version
+            except ClientError:
+                traceback.print_exc()
+                failed_ids.append(reference_id)
+        if failed_ids:
+            result["error"] = (
+                f"Unable to retrieve reference versions for: {', '.join(failed_ids)}. "
+                "Please contact an AWS administrator."
+            )
+            return handle_init_failure(result, is_batch_job, pipeline_names)
+        missing_references = [
+            ref_id for ref_id, version in reference_versions.items()
+            if version is None
+        ]
+        if missing_references:
+            result["error"] = (
+                f"Missing reference versions for: {', '.join(missing_references)}. "
+                "Please contact an AWS administrator."
+            )
+            return handle_init_failure(result, is_batch_job, pipeline_names)
+
+        if HUB_NAME in PHARMCAT_HUBS:
+            passed, error_message = check_pharmcat_configuration()
+            if not passed:
+                result["error"] = error_message
+                return handle_init_failure(result, is_batch_job, pipeline_names)
+        if HUB_NAME in LOOKUP_HUBS:
+            passed, error_message = check_assoc_matrix()
+            if not passed:
+                result["error"] = error_message
+                return handle_init_failure(result, is_batch_job, pipeline_names)
+
+        parsed_location = urlparse(location)
+        source_vcf_key = parsed_location.path.lstrip("/")
+        input_vcf = Path(source_vcf_key).name
+
+        sns_topics = config.get("sns_topics", [])
+        if not sns_topics:
+            result["error"] = (
+                "No SNS topics configured for this hub. "
+                "Please contact an AWS administrator."
+            )
+            return handle_init_failure(result, is_batch_job, pipeline_names)
+
+        try:
+            for topic_arn in HUB_CONFIGS.get(HUB_NAME, {}).get("sns_topics"):
+                message = json.dumps(
+                    {
+                        "requestId": request_id,
+                        "projectName": project,
+                        "sourceVcfKey": source_vcf_key,
+                        "missingToRef": missing_to_ref,
+                    }
+                )
             kwargs = {"TopicArn": topic_arn, "Message": message}
             sns_client.publish(**kwargs)
-    except ClientError as e:
-        result["error"] = f"Failed to publish message to SNS topic: {str(e)}"
-        return handle_init_failure(result, is_batch_job, pipeline_names)
+        except ClientError as e:
+            result["error"] = f"Failed to publish message to SNS topic: {str(e)}"
+            return handle_init_failure(result, is_batch_job, pipeline_names)
 
-    update_clinic_job(
-        job_id=request_id,
-        job_name=job_name,
-        job_status="pending",
-        project_name=project,
-        input_vcf=input_vcf,
-        user_id=sub,
-        reference_versions=reference_versions,
-        pipeline_names=pipeline_names,
-        missing_to_ref=missing_to_ref,
-        skip_email=True,
-    )
+        update_clinic_job(
+            job_id=request_id,
+            job_name=job_name,
+            job_status="pending",
+            project_name=project,
+            input_vcf=input_vcf,
+            user_id=sub,
+            reference_versions=reference_versions,
+            pipeline_names=pipeline_names,
+            missing_to_ref=missing_to_ref,
+            skip_email=True,
+        )
 
-    return bundle_response(
-        200,
-        {
-            "Response": "Process started",
-            "RequestId": request_id,
-            "ProjectName": project,
-            "Success": True,
-        },
-    )
+        return bundle_response(
+            200,
+            {
+                "Response": "Process started",
+                "RequestId": request_id,
+                "ProjectName": project,
+                "Success": True,
+            },
+        )
+
+    except PermissionError as e:
+        return bundle_response(
+            403,
+            {
+                "success": False,
+                "error": str(e),
+            },
+        )
+
+    except Exception as e:
+        print("Unhandled exception:", e)
+        traceback.print_exc()
+        return bundle_response(
+            500,
+            {
+                "success": False,
+                "error": "Unhandled exception during clinic job initialization.",
+            },
+        )
