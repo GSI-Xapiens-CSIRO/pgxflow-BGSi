@@ -3,7 +3,7 @@ import os
 import boto3
 import json
 from shared.apiutils import bad_request, bundle_response
-from shared.utils import require_permission, PermissionError
+from shared.utils import require_permission, InsufficientPermissionError
 
 s3_client = boto3.client("s3")
 BUCKET_NAME = os.environ["FILE_LOCATION"]
@@ -67,7 +67,7 @@ def lambda_handler(event, context):
             case "POST":
                 try:
                     require_permission(event, "generate_report.update")
-                except PermissionError:
+                except InsufficientPermissionError:
                     require_permission(event, "generate_report.create")
 
                 project_name = event["queryStringParameters"]["projectName"]
@@ -85,7 +85,7 @@ def lambda_handler(event, context):
                     },
                 )
 
-    except PermissionError as e:
+    except InsufficientPermissionError as e:
         return bundle_response(
             403,
             {

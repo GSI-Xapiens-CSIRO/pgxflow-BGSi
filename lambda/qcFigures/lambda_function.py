@@ -4,7 +4,11 @@ import boto3
 import json
 from uuid import uuid4
 from shared.apiutils import bad_request, bundle_response
-from shared.utils import generate_presigned_get_url, require_permission, PermissionError
+from shared.utils import (
+    generate_presigned_get_url,
+    require_permission,
+    InsufficientPermissionError,
+)
 
 
 s3_client = boto3.client("s3")
@@ -248,7 +252,7 @@ def lambda_handler(event, context):
             },
         )
 
-    except PermissionError as e:
+    except InsufficientPermissionError as e:
         return bundle_response(
             403,
             {

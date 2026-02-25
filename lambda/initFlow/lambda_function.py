@@ -14,7 +14,7 @@ from shared.utils import (
     handle_failed_execution,
     query_references_table,
     require_permission,
-    PermissionError,
+    InsufficientPermissionError,
 )
 from dynamodb import does_clinic_job_exist_by_name
 from pharmcat import check_pharmcat_configuration
@@ -145,7 +145,7 @@ def lambda_handler(event, context):
         if not is_batch_job:
             try:
                 require_permission(event, "clinical_workflow_execution.create")
-            except PermissionError:
+            except InsufficientPermissionError:
                 require_permission(event, "clinical_workflow_execution.update")
 
         result = parse_sns(event) if is_batch_job else parse_api_gateway(event)
@@ -275,7 +275,7 @@ def lambda_handler(event, context):
             },
         )
 
-    except PermissionError as e:
+    except InsufficientPermissionError as e:
         return bundle_response(
             403,
             {
