@@ -27,13 +27,7 @@ WORKDIR ${LAMBDA_TASK_ROOT}/
 
 COPY requirements.txt ${LAMBDA_TASK_ROOT}/
 
-RUN pip install --upgrade pip wheel setuptools
-
-RUN pip install --default-timeout=120 --retries 10 numpy
-
-RUN pip install --default-timeout=120 --retries 10 --prefer-binary scipy==1.15.2
-
-RUN pip install --default-timeout=120 --retries 10 --prefer-binary vcfstats==0.6.0 statsmodels==0.14.4
+RUN pip install --upgrade pip wheel setuptools && pip install --default-timeout=120 --retries 10 --prefer-binary -r requirements.txt
 
 COPY lambda_function.py ${LAMBDA_TASK_ROOT}/
 COPY gq_monkey_patch.py ${LAMBDA_TASK_ROOT}/
