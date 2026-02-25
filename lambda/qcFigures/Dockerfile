@@ -7,6 +7,9 @@ RUN dnf update -y && dnf install -y \
     pkg-config \
     gzip \
     git \
+    gcc-gfortran \
+    python3-devel \
+    openblas-devel \
     && dnf clean all
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -24,8 +27,9 @@ WORKDIR ${LAMBDA_TASK_ROOT}/
 
 COPY requirements.txt ${LAMBDA_TASK_ROOT}/
 
+# Use pre-compiled wheels to avoid compilation on resource-constrained EC2
 RUN pip install --upgrade pip wheel setuptools \
-    && pip install -r requirements.txt --verbose
+    && pip install --default-timeout=100 --retries 5 --prefer-binary -r requirements.txt --verbose
 
 COPY lambda_function.py ${LAMBDA_TASK_ROOT}/
 COPY gq_monkey_patch.py ${LAMBDA_TASK_ROOT}/
