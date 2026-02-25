@@ -4,8 +4,7 @@ import boto3
 import json
 from uuid import uuid4
 from shared.apiutils import bad_request, bundle_response
-from shared.utils import generate_presigned_get_url
-from shared.auth import require_permission, PermissionError
+from shared.utils import generate_presigned_get_url, require_permission, PermissionError
 
 
 s3_client = boto3.client("s3")
@@ -143,9 +142,7 @@ def lambda_handler(event, context):
                 image_file_name = image_file.split("/")[-1]
 
                 if identifier in image_file_name:
-                    output_vcfstats_file = (
-                        f"projects/{project_name}/qc-figures/{file_name}/{image_file_name}"
-                    )
+                    output_vcfstats_file = f"projects/{project_name}/qc-figures/{file_name}/{image_file_name}"
 
                     result_url = generate_presigned_get_url(
                         BUCKET_NAME,
@@ -172,9 +169,7 @@ def lambda_handler(event, context):
         # GENERATE IMAGE
         # ===============================
 
-        s3_resource.Bucket(BUCKET_NAME).download_file(
-            input_vcf_file, local_vcf_path
-        )
+        s3_resource.Bucket(BUCKET_NAME).download_file(input_vcf_file, local_vcf_path)
 
         formula, image_title = get_formula_and_title(key, file_name)
         if not formula:

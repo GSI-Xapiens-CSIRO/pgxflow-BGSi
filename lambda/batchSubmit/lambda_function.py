@@ -7,9 +7,8 @@ from uuid import uuid4 as uuid
 
 from shared.apiutils import bad_request, bundle_response
 from shared.dynamodb import check_user_in_project, update_clinic_job
-from shared.utils import LoggingClient
+from shared.utils import LoggingClient, require_permission, PermissionError
 from dynamodb import batch_check_duplicate_job_name
-from shared.auth import require_permission, PermissionError
 
 
 HUB_NAME = os.environ["HUB_NAME"]

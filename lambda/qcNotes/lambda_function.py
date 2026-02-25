@@ -3,7 +3,7 @@ import os
 import boto3
 import json
 from shared.apiutils import bad_request, bundle_response
-from shared.auth import require_permission, PermissionError
+from shared.utils import require_permission, PermissionError
 
 s3_client = boto3.client("s3")
 BUCKET_NAME = os.environ["FILE_LOCATION"]
@@ -45,6 +45,7 @@ def update_notes(project_name, file_name, notes):
         },
     )
 
+
 def lambda_handler(event, context):
     print("Event Received: {}".format(json.dumps(event)))
 
@@ -68,11 +69,10 @@ def lambda_handler(event, context):
                     require_permission(event, "generate_report.update")
                 except PermissionError:
                     require_permission(event, "generate_report.create")
-                
 
                 project_name = event["queryStringParameters"]["projectName"]
                 file_name = event["queryStringParameters"]["fileName"]
-                notes = json.loads(event["body"] or "\"\"")
+                notes = json.loads(event["body"] or '""')
 
                 return update_notes(project_name, file_name, notes)
 
