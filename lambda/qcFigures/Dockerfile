@@ -29,11 +29,17 @@ COPY requirements.txt ${LAMBDA_TASK_ROOT}/
 
 RUN pip install --upgrade pip wheel setuptools
 
-# Force binary wheels to avoid compilation issues (especially for pandas/scipy)
-# Use --only-binary for packages that commonly fail source builds
+# Force binary wheels for heavy scientific packages only
+# Let datar compile from source if needed to resolve dependencies
 RUN pip install --default-timeout=120 --retries 10 \
     --only-binary=pandas,scipy,numpy,statsmodels \
-    -r requirements.txt
+    vcfstats==0.6.0
+
+# Install remaining dependencies (datar will resolve automatically)
+RUN pip install --default-timeout=120 --retries 10 \
+    --only-binary=pandas,scipy,numpy,statsmodels \
+    statsmodels==0.14.4 \
+    scipy==1.13.1
 
 COPY lambda_function.py ${LAMBDA_TASK_ROOT}/
 COPY gq_monkey_patch.py ${LAMBDA_TASK_ROOT}/
