@@ -9,11 +9,16 @@ from botocore.client import ClientError
 
 from shared.apiutils import bad_request, bundle_response
 from shared.dynamodb import check_user_in_project, update_clinic_job
-from shared.utils import LoggingClient, handle_failed_execution, query_references_table
+from shared.utils import (
+    LoggingClient,
+    handle_failed_execution,
+    query_references_table,
+    require_permission,
+    InsufficientPermissionError,
+)
 from dynamodb import does_clinic_job_exist_by_name
 from pharmcat import check_pharmcat_configuration
 from lookup import check_assoc_matrix
-from shared.auth import require_permission, PermissionError
 
 HUB_NAME = os.environ["HUB_NAME"]
 PHARMCAT_PREPROCESSOR_SNS_TOPIC_ARN = os.environ["PHARMCAT_PREPROCESSOR_SNS_TOPIC_ARN"]
@@ -140,7 +145,7 @@ def lambda_handler(event, context):
         if not is_batch_job:
             try:
                 require_permission(event, "clinical_workflow_execution.create")
-            except PermissionError:
+            except InsufficientPermissionError:
                 require_permission(event, "clinical_workflow_execution.update")
 
         result = parse_sns(event) if is_batch_job else parse_api_gateway(event)
@@ -199,8 +204,7 @@ def lambda_handler(event, context):
             )
             return handle_init_failure(result, is_batch_job, pipeline_names)
         missing_references = [
-            ref_id for ref_id, version in reference_versions.items()
-            if version is None
+            ref_id for ref_id, version in reference_versions.items() if version is None
         ]
         if missing_references:
             result["error"] = (
@@ -271,7 +275,7 @@ def lambda_handler(event, context):
             },
         )
 
-    except PermissionError as e:
+    except InsufficientPermissionError as e:
         return bundle_response(
             403,
             {

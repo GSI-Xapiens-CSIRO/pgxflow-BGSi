@@ -3,8 +3,7 @@ import os
 
 from shared.apiutils import bad_request, bundle_response
 from shared.dynamodb import check_user_in_project, query_clinic_job
-from shared.utils import LoggingClient
-from shared.auth import require_permission, PermissionError  # 🔐 UPDATED
+from shared.utils import LoggingClient, require_permission, InsufficientPermissionError
 
 HUB_NAME = os.environ["HUB_NAME"]
 DPORTAL_BUCKET = os.environ["DPORTAL_BUCKET"]
@@ -93,7 +92,7 @@ def lambda_handler(event, _):
             },
         )
 
-    except PermissionError as e:
+    except InsufficientPermissionError as e:
         return bundle_response(
             403,
             {

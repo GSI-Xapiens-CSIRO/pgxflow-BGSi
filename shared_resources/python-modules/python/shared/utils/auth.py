@@ -2,7 +2,7 @@ import json
 import base64
 
 
-class PermissionError(Exception):
+class InsufficientPermissionError(Exception):
     pass
 
 
@@ -14,7 +14,7 @@ def base64url_decode(input_str: str) -> bytes:
 def decode_jwt_no_verify(token: str) -> dict:
     parts = token.split(".")
     if len(parts) < 2:
-        raise PermissionError("Invalid token format")
+        raise InsufficientPermissionError("Invalid token format")
 
     payload = parts[1]
     decoded = base64url_decode(payload)
@@ -24,19 +24,16 @@ def decode_jwt_no_verify(token: str) -> dict:
 def get_permissions_from_event(event: dict) -> list:
     headers = event.get("headers") or {}
 
-    token = (
-        headers.get("X-Permissions-Token")
-        or headers.get("x-permissions-token")
-    )
+    token = headers.get("X-Permissions-Token") or headers.get("x-permissions-token")
 
     if not token:
-        raise PermissionError("Missing X-Permissions-Token header")
+        raise InsufficientPermissionError("Missing X-Permissions-Token header")
 
     payload = decode_jwt_no_verify(token)
 
     permissions = payload.get("permissions")
     if not isinstance(permissions, list):
-        raise PermissionError("Invalid permissions format")
+        raise InsufficientPermissionError("Invalid permissions format")
 
     return permissions
 
@@ -45,4 +42,4 @@ def require_permission(event: dict, permission: str):
     permissions = get_permissions_from_event(event)
 
     if permission not in permissions:
-        raise PermissionError(f"Missing permission: {permission}")
+        raise InsufficientPermissionError(f"Missing permission: {permission}")
